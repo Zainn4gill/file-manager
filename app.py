@@ -7,7 +7,13 @@ app = Flask(__name__)
 # Configuration
 UPLOAD_FOLDER = "static/uploads"
 if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)  # Create the folder only if it doesn't already exist
+    try:
+        os.makedirs(UPLOAD_FOLDER)  # Create the folder if it doesn't exist
+    except FileExistsError:
+        # If a file with the same name exists, delete it and create the directory
+        os.remove(UPLOAD_FOLDER)
+        os.makedirs(UPLOAD_FOLDER)
+
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB upload limit
 app.secret_key = "your_secret_key"  # Replace with a secure key in production
@@ -22,7 +28,11 @@ def allowed_file(filename):
 @app.route("/")
 def home():
     """Render the homepage."""
-    files = os.listdir(app.config["UPLOAD_FOLDER"])
+    try:
+        files = os.listdir(app.config["UPLOAD_FOLDER"])  # List files in the uploads folder
+    except Exception as e:
+        flash(f"Error accessing upload folder: {str(e)}")
+        files = []
     return render_template("index.html", files=files)
 
 @app.route("/upload", methods=["POST"])
