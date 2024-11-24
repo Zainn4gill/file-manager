@@ -1,74 +1,52 @@
 import os
-from flask import Flask, request, redirect, url_for, render_template, send_from_directory, flash
+from flask import Flask, render_template, request, redirect
+from werkzeug.utils import secure_filename
 
-# Initialize the Flask app
 app = Flask(__name__)
 
-# Configuration
-UPLOAD_FOLDER = "static/uploads"
-if not os.path.exists(UPLOAD_FOLDER):
-    try:
-        os.makedirs(UPLOAD_FOLDER)  # Create the folder if it doesn't exist
-    except FileExistsError:
-        # If a file with the same name exists, delete it and create the directory
-        os.remove(UPLOAD_FOLDER)
-        os.makedirs(UPLOAD_FOLDER)
+# Ensure the upload folder exists
+upload_folder = "static/uploads"
+if not os.path.exists(upload_folder):
+    os.makedirs(upload_folder)
 
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB upload limit
-app.secret_key = "your_secret_key"  # Replace with a secure key in production
+# Set configuration for uploading
+app.config["UPLOAD_FOLDER"] = upload_folder
+app.config["ALLOWED_EXTENSIONS"] = {"txt", "pdf", "png", "jpg", "jpeg", "gif", "zip"}  # Added zip
 
-# Allowed extensions for file uploads
-ALLOWED_EXTENSIONS = {"txt", "pdf", "png", "jpg", "jpeg", "gif", "zip", "mp4"}
-
+# Function to check allowed file extensions
 def allowed_file(filename):
-    """Check if the file has a valid extension."""
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in app.config["ALLOWED_EXTENSIONS"]
 
+# Home route that shows uploaded files
 @app.route("/")
 def home():
-    """Render the homepage."""
     try:
-        files = os.listdir(app.config["UPLOAD_FOLDER"])  # List files in the uploads folder
-    except Exception as e:
-        flash(f"Error accessing upload folder: {str(e)}")
+        files = os.listdir(app.config["UPLOAD_FOLDER"])
+    except FileNotFoundError:
         files = []
     return render_template("index.html", files=files)
 
+# Upload file route
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    """Handle file uploads."""
     if "file" not in request.files:
-        flash("No file part")
-        return redirect(request.url)
+        return "No file part", 400
+
     file = request.files["file"]
     if file.filename == "":
-        flash("No selected file")
-        return redirect("/")
+        return "No selected file", 400
+
     if file and allowed_file(file.filename):
-        filename = file.filename
-        file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
-        flash("File uploaded successfully")
-        return redirect("/")
+        filename = secure_filename(file.filename)
+        try:
+            save_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file.save(save_path)
+            return redirect("/")
+        except Exception as e:
+            app.logger.error(f"Error saving file: {e}")
+            return f"An error occurred: {e}", 500
     else:
-        flash("Invalid file type")
-        return redirect("/")
-
-@app.route("/download/<filename>")
-def download_file(filename):
-    """Allow file downloads."""
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
-
-@app.route("/delete/<filename>", methods=["POST"])
-def delete_file(filename):
-    """Delete a file."""
-    file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
-        flash("File deleted successfully")
-    else:
-        flash("File not found")
-    return redirect("/")
+        return "File not allowed", 400
 
 if __name__ == "__main__":
     app.run(debug=True)
